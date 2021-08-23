@@ -6,6 +6,7 @@ const customerSchema = mongoose.Schema({
     account_username: String,
     account_password: String,
     transaction_pin: Number,
+    email: String, 
     account_balance: {
         type:Number,
         default: 0
