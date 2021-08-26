@@ -1,17 +1,11 @@
 require("dotenv").config();
 const express = require("express");
 const bcrypt = require ("bcryptjs")
-const { findByIdAndRemove, findByIdAndUpdate, findOneAndUpdate } = require("../../models/customer");
+const { findByIdAndRemove, findByIdAndUpdate, findOneAndUpdate, findOne } = require("../../models/customer");
 const router = express.Router();
 const Customer = require("../../models/customer");
 const auth = require("../../middleware/auth");
 const jwt = require("jsonwebtoken");
-
-// router.post("/", (req,res,next)=>{
-//     Customer.create(req.body).then((customer)=>{
-//         res.send(customer)
-//     }).catch(next);     
-// });
 
 router.post("/register", async (req,res,next)=>{
     try{
@@ -32,14 +26,7 @@ router.post("/register", async (req,res,next)=>{
             transaction_pin,
             email: email.toLowerCase()
         })
-
-        const token = jwt.sign(
-            {customer_id: customer._id,email}, process.env.TOKEN_KEY,
-            {
-                expiresIn: "2h",
-            }
-        );
-
+        const token = jwt.sign({customer}, process.env.TOKEN_KEY,{expiresIn: "2h"});
         customer.token = token
         res.status(201).json(customer);
         
@@ -56,12 +43,7 @@ router.post("/login", async (req,res,next)=>{
         }
         const customer = await Customer.findOne({email});
         if (customer && (await bcrypt.compare(account_password,customer.account_password))){
-            const token = jwt.sign(
-                {customer_id: customer._id,email}, process.env.TOKEN_KEY,
-                {
-                    expiresIn: "2h",
-                }
-            );
+            const token = jwt.sign({customer}, process.env.TOKEN_KEY,{expiresIn: "2h"});
             customer.token = token
             res.status(200).json(customer); 
         } res.status(400).send("Invalid Credentials")
@@ -70,20 +52,52 @@ router.post("/login", async (req,res,next)=>{
         console.log(e)
     };
 })
-// router.post("/", async (req,res,next)=>{
-//     try{
-//         const customer= await Customer.create(req.body)
-//         res.send(customer)
-//     }catch(e){
-//         console.error(e)
-//     };     
-// });
 
-// router.get("/", (req,res,next)=>{
-//     Customer.find({}).then((customers)=>{
-//         res.send(customers)
-//     })
-// })
+//router.post("/transfer",auth, async (req,res,next)=>{
+router.post("/transfer", async (req,res,next)=>{
+    try{
+        //const {email,amount,pin} =req.body;    
+        //if(!(email&&amount&&pin)){
+        const {email,amount} =req.body;    
+        if(!(email&&amount)){
+            res.status(201).json("Enter all the details")
+        }
+        const customer = await Customer.findOne({email})
+        customer.account_balance+=amount;
+        await customer.save();
+        res.status(201).json(customer);
+
+    }catch(e){console.log(e)}
+    
+})
+
+router.post("/reset", async (req,res,next)=>{
+    try{
+        const {email} =req.body;    
+        if(!(email)){
+            res.status(201).json("Enter the email")
+        }
+        const customer = await Customer.findOne({email})
+        customer.account_balance=0;
+        await customer.save()
+        res.status(201).json(customer);
+
+    }catch(e){console.log(e)}
+    
+})
+
+router.get("/:id", async (req,res,next)=>{
+    try{
+        const id = req.params.id
+        const customer = await Customer.findById({_id:id})    
+        if(!(customer)){
+            res.status(201).json("Not a valid customer")
+        }
+        res.status(201).json(customer);
+
+    }catch(e){console.log(e)}
+    
+})
 
 router.get("/", async(req,res,next)=>{
     try{
@@ -94,32 +108,15 @@ router.get("/", async(req,res,next)=>{
     }
 })
 
-// router.delete("/:id", (req,res,next)=>{
-//     const id = req.params.id;
-//     Customer.findByIdAndRemove({_id: id}).then((customer)=>{
-//         res.send(customer);
-//     })
-// })
-
-router.delete("/", async(req,res,next)=>{
+router.delete("/:id", async(req,res,next)=>{
     const id = req.params.id;
     try{
-        const customer = findByIdAndRemove({_id:id});
+        const customer = await Customer.findByIdAndRemove({_id:id});
         res.status(200).json(customer)
     }catch(e){
         console.error(e)
     }
 })
-
-// router.put("/:id", (req,res,next)=>{
-//     const id = req.params.id;
-//     Customer.findByIdAndUpdate({_id: id},req.body).then(()=>{
-//         Customer.findOneAndUpdate({id}).then((customer)=>{
-//             res.send(customer);
-//             console.log(customer);
-//         });
-//     });
-// })
 
 router.put("/:id", async (req,res,next)=>{
     const id = req.params.id;
