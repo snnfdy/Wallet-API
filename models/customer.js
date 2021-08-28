@@ -15,7 +15,8 @@ const customerSchema = mongoose.Schema({
         type: String,
         enum: ["user","admin"],
         default: "user"
-    }   
+    },
+    confirmToken: Number   
 })
 
 module.exports = mongoose.model("Customer", customerSchema)

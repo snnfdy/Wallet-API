@@ -55,30 +55,83 @@ router.post("/login", async (req,res,next)=>{
     };
 })
 
-
-router.post("/transfer", verifyToken, async (req,res,next)=>{
+router.post("/transfer", verifyToken,async (req,res,next)=>{
     try{
-        const {email,amount} =req.body;    
-        if(!(email&&amount)){
-            return res.status(201).json("Enter all the details")
+        const {amount,email} = req.body;
+        const customer= await Customer.findOne({email});
+        if (!(amount&&email)){
+            return res.status(400).send("Enter the email of the recipient and the amount you want to send pls")
         }
-        const customer = await Customer.findOne({email}); 
-        let amt = parseInt(amount,10)
-        customer.account_balance+=amt;
-        await customer.save();
-        return res.status(200).json(customer)
 
-        // jwt.verify(req.token, 'secretkey', (err,customer)=>{
-        //     if(err){
-        //         return res.sendStatus(403);
-        //     }else {
-        //         return res.json(200).send(customer)
-        //     }
-        // })
+        let mailRecipients =[]
+        const customers = await Customer.find({});
+        let custome = customers
+                for (i=0;i<custome.length;i++){
+                    if (custome[i].account_type === "admin") {
+                        mailRecipients.push(custome[i].first_name)   
+                    }
+                     
+                    else {
+                        return res.status(200).json("no admins")
+                    }  
+                }
+        let mailed =mailRecipients.toString();
+        console.log(mailed) 
+        nodemailer.createTestAccount((err,account)=>{
+            let transporter = nodemailer.createTransport({
+                service: "gmail",
+                auth: {
+                    user: process.env.GMAIL_USERNAME,
+                    pass: process.env.GMAIL_PASSWORD
+                }  
+            });
+            const confirmToken = Math.floor(100000000 + Math.random() * 900000000);
+            customer.confirmToken = confirmToken;
+            customer.save()
+            
+            let mailOptions = {
+                from: 'ifedayosanni93@gmail.com',
+                to: mailed,
+                subject: "Confirm Transaction",
+                html: `Press <a href = http://localhost:3000/fighters/verify/${confirmToken}> here </a> to verify the transaction. Thanks`
+            }
+            transporter.sendMail(mailOptions, (error,info)=>{
+                if (error){
+                    return console.log(error)
+                }
+                return console.log("Message sent: %s", info.messageId);
+            })
 
-    }catch(e){console.log(e)}
-    
+        })
+
+    }catch(e){
+        console.error(e);
+    } 
 })
+
+router.get("/verify/:confirmToken", async(req,res)=>{
+    const confirmToken = req.params.confirmToken;
+    console.log("confirmToken:",confirmToken)
+    const customer = await Customer.findOne({confirmToken})
+    let confirmedCustomers = []
+    if (customer){
+        customer.confirmed = true;
+        await fighter.save()
+        confirmedCustomers.push(customer)
+        return res.redirect("/")
+    } else {
+        return res.json("customer not found")
+    }
+})
+
+//         let amt = parseInt(amount,10)
+//         customer.account_balance+=amt;
+//         await customer.save();
+//         return res.status(200).json(customer)
+
+//     }catch(e){console.log(e)}
+    
+// })
 
 router.post("/reset", async (req,res,next)=>{
     try{
@@ -111,6 +164,11 @@ router.get("/:id", async (req,res,next)=>{
 router.get("/", async(req,res,next)=>{
     try{
         const customers = await Customer.find({});
+        let custome = customers
+        console.log(customers)
+        console.log(custome.length)
+        console.log(custome[2].email)
+
         return res.status(200).json(customers)
     }catch(e){
         console.error(e);
@@ -140,17 +198,5 @@ router.put("/:id", async (req,res,next)=>{
         console.error(e)
     }
 });
-
-// function verifyToken(req,res,next) {
-//     const bearerHeader = req.headers['authorization'];
-//     if(typeof bearerHeader !== 'undefined'){
-//         const bearer = bearerHeader.split(' ');
-//         const bearerToken = bearer[1];
-//         req.token = bearerToken 
-//         next()
-//     }else{
-//         return res.sendStatus(403);
-//     }
-// }
 
 module.exports = router;
