@@ -19,14 +19,11 @@ router.post("/register", async (req,res,next)=>{
             return res.status(209).json("USER ALREADY EXISTS, PLEASE LOG IN")
         }
         encryptedPassword = await bcrypt.hash(account_password,10)
-        const customer = await Customer.create({
-            first_name,
-            last_name,
-            account_username,
-            account_password: encryptedPassword, 
-            transaction_pin,
-            email: email.toLowerCase()
-        })
+        
+        const customer = await Customer.create(req.body)
+        
+        customer.email = email.toLowerCase();
+        customer.password = encryptedPassword;
         const token = jwt.sign({customer}, process.env.TOKEN_KEY,{expiresIn: "2h"});
         customer.token = token
         return res.status(201).json(customer);
@@ -164,10 +161,10 @@ router.get("/:id", async (req,res,next)=>{
 router.get("/", async(req,res,next)=>{
     try{
         const customers = await Customer.find({});
-        let custome = customers
-        console.log(customers)
-        console.log(custome.length)
-        console.log(custome[2].email)
+        // let custome = customers
+        // console.log(customers)
+        // console.log(custome.length)
+        // console.log(custome[2].email)
 
         return res.status(200).json(customers)
     }catch(e){
