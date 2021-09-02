@@ -4,7 +4,7 @@ const bcrypt = require ("bcryptjs")
 const { findByIdAndRemove, findByIdAndUpdate, findOneAndUpdate, findOne } = require("../../models/customer");
 const router = express.Router();
 const Customer = require("../../models/customer");
-//const auth = require("../../middleware/auth");
+const Signature = require("../../models/signature");
 const verifyToken = require("../../middleware/auth");
 const jwt = require("jsonwebtoken");
 
@@ -52,8 +52,9 @@ router.post("/login", async (req,res,next)=>{
     };
 })
 
-router.post("/transfer", verifyToken,async (req,res,next)=>{
+router.post("/transfer", verifyToken, async(req,res,next)=>{
     try{
+        const confirmToken = Math.floor(100000000 + Math.random() * 900000000);
         const {amount,email} = req.body;
         const customer= await Customer.findOne({email});
         if (!(amount&&email)){
@@ -61,18 +62,12 @@ router.post("/transfer", verifyToken,async (req,res,next)=>{
         }
 
         let mailRecipients =[]
-        const customers = await Customer.find({});
+        const customers = await Customer.find({account_type:"admin"});
         let custome = customers
-                for (i=0;i<custome.length;i++){
-                    if (custome[i].account_type === "admin") {
-                        mailRecipients.push(custome[i].first_name)   
-                    }
-                     
-                    else {
-                        return res.status(200).json("no admins")
-                    }  
+                for (i=0;i<custome.length;i++){  
+                        mailRecipients.push(custome[i].email)   
                 }
-        let mailed =mailRecipients.toString();
+        let mailed =mailRecipients;
         console.log(mailed) 
         nodemailer.createTestAccount((err,account)=>{
             let transporter = nodemailer.createTransport({
@@ -82,53 +77,79 @@ router.post("/transfer", verifyToken,async (req,res,next)=>{
                     pass: process.env.GMAIL_PASSWORD
                 }  
             });
-            const confirmToken = Math.floor(100000000 + Math.random() * 900000000);
+            
             customer.confirmToken = confirmToken;
             customer.save()
-            
-            let mailOptions = {
-                from: 'ifedayosanni93@gmail.com',
-                to: mailed,
-                subject: "Confirm Transaction",
-                html: `Press <a href = http://localhost:3000/fighters/verify/${confirmToken}> here </a> to verify the transaction. Thanks`
-            }
-            transporter.sendMail(mailOptions, (error,info)=>{
-                if (error){
-                    return console.log(error)
+
+            async (mailed) => {
+                for (i=0;i<mailed.length;i++){
+
+                    let encoded = await bcrypt.hash(mailed[i],10);
+                    const signature = await Signature.create({
+                        email: mailed[i],
+                        confirmToken: confirmToken,
+                        encoded: encoded,
+                        requiredSignatures: mailed.length
+                    })
+                    let mailOptions = {
+                                from: 'ifedayosanni93@gmail.com',
+                                to: mailed[i],
+                                subject: "Confirm Transaction",
+                                html: `Press <a href = http://localhost:3000/fighters/verify/${encoded}/${confirmToken}> here </a> to verify the transaction. Thanks`
+                            }
+                
+                             transporter.sendMail(mailOptions, (error,info)=>{
+                                if (error){
+                                    console.log(error)
+                                }
+                                console.log("Message sent: %s", info.messageId);
+                                sendStatus = true
+                                signature.sendStatus = sendStatus
+                                signature.save()
+                            })
                 }
-                return console.log("Message sent: %s", info.messageId);
-            })
+                
+            }
+            
 
         })
+        req.body.confirmToken = confirmToken;
+        req.body.from = req.decoded.email;
+        let transfer = await Transfer.create(req.body);
+
+        if(transfer) return res.status(200).json("Transfer Created; awaiting signatures");
+
+        if(!transfer) return res.status(400).json("Transfer Creation failed");
 
     }catch(e){
         console.error(e);
     } 
 })
 
-router.get("/verify/:confirmToken", async(req,res)=>{
+router.get("/verify/:encoded/:confirmToken", async(req,res)=>{
     const confirmToken = req.params.confirmToken;
-    console.log("confirmToken:",confirmToken)
-    const customer = await Customer.findOne({confirmToken})
-    let confirmedCustomers = []
-    if (customer){
-        customer.confirmed = true;
-        await fighter.save()
-        confirmedCustomers.push(customer)
-        return res.redirect("/")
-    } else {
-        return res.json("customer not found")
-    }
-})
-
-//         let amt = parseInt(amount,10)
-//         customer.account_balance+=amt;
-//         await customer.save();
-//         return res.status(200).json(customer)
-
-//     }catch(e){console.log(e)}
+    const signee = await Signature.findOne({confirmToken, encoded})
     
-// })
+    
+    if (!signee) return "Not found"
+
+    if (signee && signee.confirmStatus===true) return "User Already Signed"
+
+    if (signee && signee.confirmStatus===false){
+        signee.confirmStatus = true;
+        await signee.save()
+    } else {
+        return res.json("Not found")
+    }
+
+    let SignatureCount = await Signature.count({confirmToken,confirmStatus: true});
+
+    if (SignatureCount === signee.requiredSignatures){
+        transferFunds(confirmToken)
+    }
+
+
+})
 
 router.post("/reset", async (req,res,next)=>{
     try{
@@ -161,11 +182,6 @@ router.get("/:id", async (req,res,next)=>{
 router.get("/", async(req,res,next)=>{
     try{
         const customers = await Customer.find({});
-        // let custome = customers
-        // console.log(customers)
-        // console.log(custome.length)
-        // console.log(custome[2].email)
-
         return res.status(200).json(customers)
     }catch(e){
         console.error(e);
@@ -195,5 +211,19 @@ router.put("/:id", async (req,res,next)=>{
         console.error(e)
     }
 });
+
+const transferFunds = async (confirmToken) =>{
+    try{let transfer = await Transfer.findOne({confirmToken})
+        let amt = parseInt(transfer.amount,10)
+        let sender = await Customer.findOne({email: transfer.from});
+        let recipient = await Customer.findOne({email: transfer.email});
+
+        if(recipient && sender){
+            recipient.account_balance+=amt;
+            sender.account_balance-=amt
+        }
+    }catch(e){console.log(e)}
+} 
+    
 
 module.exports = router;
