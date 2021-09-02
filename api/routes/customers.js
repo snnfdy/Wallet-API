@@ -1,10 +1,12 @@
 require("dotenv").config();
 const express = require("express");
 const bcrypt = require ("bcryptjs")
+const sha256 = require("sha256")
 const { findByIdAndRemove, findByIdAndUpdate, findOneAndUpdate, findOne } = require("../../models/customer");
 const router = express.Router();
 const Customer = require("../../models/customer");
 const Signature = require("../../models/signature");
+const Transfer = require("../../models/transfer");
 const verifyToken = require("../../middleware/auth");
 const jwt = require("jsonwebtoken");
 
@@ -81,11 +83,10 @@ router.post("/transfer", verifyToken, async(req,res,next)=>{
             customer.confirmToken = confirmToken;
             customer.save()
 
-            async (mailed) => {
                 for (i=0;i<mailed.length;i++){
 
-                    let encoded = await bcrypt.hash(mailed[i],10);
-                    const signature = await Signature.create({
+                    let encoded = sha256(mailed[i]);
+                    const signature = Signature.create({
                         email: mailed[i],
                         confirmToken: confirmToken,
                         encoded: encoded,
@@ -108,8 +109,7 @@ router.post("/transfer", verifyToken, async(req,res,next)=>{
                                 signature.save()
                             })
                 }
-                
-            }
+             
             
 
         })
