@@ -9,6 +9,8 @@ const Signature = require("../../models/signature");
 const Transfer = require("../../models/transfer");
 const verifyToken = require("../../middleware/auth");
 const jwt = require("jsonwebtoken");
+const nodemailer = require("nodemailer");
+const signature = require("../../models/signature");
 
 router.post("/register", async (req,res,next)=>{
     try{
@@ -25,7 +27,10 @@ router.post("/register", async (req,res,next)=>{
         const customer = await Customer.create(req.body)
         
         customer.email = email.toLowerCase();
-        customer.password = encryptedPassword;
+        customer.account_password = encryptedPassword;
+        await customer.save()
+
+
         const token = jwt.sign({customer}, process.env.TOKEN_KEY,{expiresIn: "2h"});
         customer.token = token
         return res.status(201).json(customer);
@@ -96,7 +101,7 @@ router.post("/transfer", verifyToken, async(req,res,next)=>{
                                 from: 'ifedayosanni93@gmail.com',
                                 to: mailed[i],
                                 subject: "Confirm Transaction",
-                                html: `Press <a href = http://localhost:3000/fighters/verify/${encoded}/${confirmToken}> here </a> to verify the transaction. Thanks`
+                                html: `Press <a href = http://localhost:3000/customers/verify/${encoded}/${confirmToken}> here </a> to verify the transaction. Thanks`
                             }
                 
                              transporter.sendMail(mailOptions, (error,info)=>{
@@ -113,9 +118,14 @@ router.post("/transfer", verifyToken, async(req,res,next)=>{
             
 
         })
+        //console.log("decoded",req.decoded)
+        console.log("email", req.decoded.customer.email)
         req.body.confirmToken = confirmToken;
-        req.body.from = req.decoded.email;
+        req.body.from = req.decoded.customer.email;
+        
         let transfer = await Transfer.create(req.body);
+        res.status(200).json(transfer)
+
 
         if(transfer) return res.status(200).json("Transfer Created; awaiting signatures");
 
@@ -128,25 +138,49 @@ router.post("/transfer", verifyToken, async(req,res,next)=>{
 
 router.get("/verify/:encoded/:confirmToken", async(req,res)=>{
     const confirmToken = req.params.confirmToken;
+    const encoded = req.params.encoded
+    sendStatus = true
+    confirmStatus = true
+    
     const signee = await Signature.findOne({confirmToken, encoded})
-    
-    
-    if (!signee) return "Not found"
 
-    if (signee && signee.confirmStatus===true) return "User Already Signed"
+    signee.sendStatus = sendStatus
+    signee.confirmStatus = confirmStatus
+    await signee.save()
 
-    if (signee && signee.confirmStatus===false){
-        signee.confirmStatus = true;
-        await signee.save()
-    } else {
-        return res.json("Not found")
-    }
-
+    console.log(signee)
+    console.log(Signature.length)
     let SignatureCount = await Signature.count({confirmToken,confirmStatus: true});
 
+    console.log(SignatureCount)
+    console.log(signee.requiredSignatures)
+
     if (SignatureCount === signee.requiredSignatures){
+        console.log("Transferring...");
         transferFunds(confirmToken)
     }
+    
+    
+    // if (!signee) return "Not found"
+
+    // if (signee && signee.confirmStatus===true) return "User Already Signed"
+
+    // if (signee && signee.confirmStatus===false){
+    //     signee.confirmStatus = true;
+    //     await signee.save()
+    //     console.log(signee)
+    // } else {
+    //     return res.json("Not found")
+    // }
+
+    //let SignatureCount = await Signature.count({confirmToken,confirmStatus: true});
+
+    // console.log(SignatureCount)
+    // console.log(signee.requiredSignatures)
+
+    // if (SignatureCount === signee.requiredSignatures){
+    //     transferFunds(confirmToken)
+    // }
 
 
 })
@@ -212,18 +246,51 @@ router.put("/:id", async (req,res,next)=>{
     }
 });
 
-const transferFunds = async (confirmToken) =>{
-    try{let transfer = await Transfer.findOne({confirmToken})
+const transferFunds = async (/*email,*/ confirmToken) =>{
+    try{//let transfer = await Transfer.findOne({email})
+        let transfer = await Transfer.findOne({confirmToken})
+        //console.log(transfer)
+        console.log(transfer)
         let amt = parseInt(transfer.amount,10)
         let sender = await Customer.findOne({email: transfer.from});
         let recipient = await Customer.findOne({email: transfer.email});
+        console.log("sender",sender);
+        console.log("recipient",recipient);
+
+        if (!recipient){
+            console.log("no recepient")
+        }
+
+        if (!sender){
+            console.log("no sender")
+        }
 
         if(recipient && sender){
-            recipient.account_balance+=amt;
-            sender.account_balance-=amt
+            if (sender.account_balance > amt){
+                recipient.account_balance+=amt;
+                await recipient.save()
+                sender.account_balance-=amt
+                await sender.save()
+                console.log("recipient",recipient)
+                console.log("sender",sender)
+            } console.log("insufficient funds")
+            
         }
     }catch(e){console.log(e)}
 } 
+
+// const transferFunds = async (confirmToken) =>{
+//     try{let transfer = await Transfer.findOne({confirmToken})
+//         let amt = parseInt(transfer.amount,10)
+//         let sender = await Customer.findOne({email: transfer.from});
+//         let recipient = await Customer.findOne({email: transfer.email});
+
+//         if(recipient && sender){
+//             recipient.account_balance+=amt;
+//             sender.account_balance-=amt
+//         }
+//     }catch(e){console.log(e)}
+// } 
     
 
 module.exports = router;
