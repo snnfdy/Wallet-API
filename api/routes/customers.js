@@ -225,10 +225,13 @@ router.put("/:id", async (req,res,next)=>{
     const id = req.params.id;
     try {
         const oldCustomer = await Customer.findByIdAndUpdate({_id:id},req.body);
+            console.log("Old customer: ",oldCustomer)
 
         if (oldCustomer){
             const customer = await Customer.findOneAndUpdate(oldCustomer.id);
-            return res.status(200).json(customer)
+            console.log(oldCustomer.id)
+            console.log(customer)
+            return res.status(200).json("new customer: ",customer)
         }
     }catch(e){
         console.error(e)
