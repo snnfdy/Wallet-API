@@ -4,7 +4,8 @@ const transferSchema = mongoose.Schema({
     email: String,
     amount: Number,
     from: String,
-    confirmToken: Number
+    confirmToken: Number,
+    status: Boolean
 })
 
 module.exports = mongoose.model("Transfer", transferSchema)
