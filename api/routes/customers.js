@@ -141,19 +141,29 @@ router.post("/transfer", verifyToken, async(req,res,next)=>{
 router.get("/verify/:encoded/:confirmToken", async(req,res)=>{
     const confirmToken = req.params.confirmToken;
     const encoded = req.params.encoded
-    sendStatus = true
+    // sendStatus = true
     confirmStatus = true
     
     const signee = await Signature.findOne({confirmToken, encoded})
+    const signedd = await Signature.find({confirmToken: confirmToken})
+    console.log(signedd)
 
-    signee.sendStatus = sendStatus
+    //signee.sendStatus = sendStatus
     signee.confirmStatus = confirmStatus
     await signee.save()
 
     console.log(signee)
     console.log(Signature.length)
+    let SigneesLeft = await Signature.find({confirmToken:confirmToken,confirmStatus: false})
+    console.log(SigneesLeft)
+    console.log("The lenght is: ",SigneesLeft.length)
+
     let SignatureCount = await Signature.count({confirmToken,confirmStatus: true});
 
+    for (i=0;i<SigneesLeft.length;i++){
+        console.log("The following people have not signed: ",SigneesLeft[i].email)
+    }
+    
     console.log(SignatureCount)
     console.log(signee.requiredSignatures)
 
